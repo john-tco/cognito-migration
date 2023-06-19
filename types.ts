@@ -1,5 +1,5 @@
 export interface RelevantCognitoData {
-  emailAddress: string;
+  hashedEmailAddress: string;
   dept: string;
   roles: string[];
   sub: string;
@@ -7,6 +7,6 @@ export interface RelevantCognitoData {
 };
 
 export interface UserServiceData extends RelevantCognitoData {
-  gap_user_id: string | undefined;
+  gap_user_id: string;
 };
 

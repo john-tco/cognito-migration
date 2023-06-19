@@ -10,6 +10,7 @@ import {
   pgApplicantApplyClient,
   pgUserServiceClient,
 } from './clients';
+import { createHash } from 'crypto';
 
 const main = async () => {
   await pgApplicantApplyClient.connect();
@@ -47,11 +48,10 @@ const getRelevantCognitoAttributes = ({
   );
   if (featuresIndex < 0) return null;
 
-  const { dept, roles } = (
-    Attributes[featuresIndex]
-      .Value!.split(',')
-      .map((feature) => feature.split('=')) as [string, string][]
-  ).reduce(getRoleAndDept, {
+  const formattedFeatureData = Attributes[featuresIndex]
+    .Value!.split(',')
+    .map((feature) => feature.split('=')) as [string, string][];
+  const { dept, roles } = formattedFeatureData.reduce(getRoleAndDept, {
     dept: '',
     roles: [],
   });
@@ -59,7 +59,16 @@ const getRelevantCognitoAttributes = ({
     'sub',
     'custom:phoneNumber',
   ]);
-  return { emailAddress, dept, roles, sub, phoneNumber: customphoneNumber };
+  const hashedEmailAddress = createHash('sha512')
+    .update(emailAddress)
+    .digest('base64');
+  return {
+    hashedEmailAddress,
+    dept,
+    roles,
+    sub,
+    phoneNumber: customphoneNumber,
+  };
 };
 
 const pickAttributes = (attributes: AttributeType[], selection: string[]) =>
@@ -82,18 +91,22 @@ const getRoleAndDept = (
 };
 
 const addDataFromApply = (
-  usersFromApply: { gap_user_id: number; user_sub: string }[],
+  usersFromApply: { gap_user_id: string; user_sub: string }[],
   cognitoUser: RelevantCognitoData
 ) => {
   const { gap_user_id } =
     usersFromApply.find(({ user_sub }) => user_sub === cognitoUser.sub) || {};
+  
+  if (!gap_user_id)
+    console.log('cannot find gap_user_id for user with sub: ', cognitoUser.sub);
+
   return { ...cognitoUser, gap_user_id };
 };
 
 export const addDataToUserService = async ({
   sub,
   dept,
-  emailAddress,
+  hashedEmailAddress,
   gap_user_id,
   phoneNumber,
   roles,
@@ -101,7 +114,7 @@ export const addDataToUserService = async ({
   pgUserServiceClient.query(
     `INSERT INTO gap_users (email, sub, dept, gap_user_id, phonenumber, roles) VALUES ($1, $2, $3, $4, $5, $6)`,
     [
-      emailAddress || '',
+      hashedEmailAddress,
       sub,
       dept,
       gap_user_id,
