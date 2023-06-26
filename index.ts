@@ -3,14 +3,14 @@ import {
   CognitoIdentityProvider,
   UserType,
 } from '@aws-sdk/client-cognito-identity-provider';
-import { RelevantCognitoData, UserServiceData } from './types';
+import { Department, RelevantCognitoData, UserServiceData } from './types';
 import { COGNITO_POOL_ID } from './secrets';
 import {
   cognitoClient,
   pgApplicantApplyClient,
   pgUserServiceClient,
 } from './clients';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 
 const main = async () => {
   await pgApplicantApplyClient.connect();
@@ -24,16 +24,43 @@ const main = async () => {
   })) as {
     Users: UserType[];
   };
+
+  const cognitoUsers = Users.map(getRelevantCognitoAttributes).filter(
+    Boolean
+  ) as RelevantCognitoData[];
+
+  await populateDepartmentsTable(cognitoUsers);
+
   (
-    (
-      Users.map(getRelevantCognitoAttributes).filter(
-        Boolean
-      ) as RelevantCognitoData[]
-    ).map((users) =>
+    cognitoUsers.map((users) =>
       addDataFromApply(pgUsersFromApply, users)
     ) as UserServiceData[]
   ).map(addDataToUserService);
   return 1;
+};
+
+const populateDepartmentsTable = async (
+  cognitoUsers: RelevantCognitoData[]
+) => {
+  const depts = cognitoUsers.reduce((acc, { dept }) => {
+    if (!acc.includes(dept)) acc.push(dept);
+    return acc;
+  }, [] as string[]);
+
+  const { rows: existingDepartments }: { rows: Department[] } =
+    await pgUserServiceClient.query(`SELECT * from departments`);
+
+  depts.filter(Boolean).forEach(async (dept) => {
+    const departmentExists = existingDepartments.some(
+      ({ name }) => name === dept
+    );
+    if (!departmentExists) {
+      await pgUserServiceClient.query(
+        `INSERT INTO departments (id, name, ggis_id) VALUES ($1, $2, $3)`,
+        [randomUUID(), dept, '']
+      );
+    }
+  });
 };
 
 const getRelevantCognitoAttributes = ({
@@ -55,10 +82,7 @@ const getRelevantCognitoAttributes = ({
     dept: '',
     roles: [],
   });
-  const { sub, customphoneNumber } = pickAttributes(Attributes, [
-    'sub',
-    'custom:phoneNumber',
-  ]);
+  const { sub } = pickAttributes(Attributes, ['sub']);
   const hashedEmailAddress = createHash('sha512')
     .update(emailAddress)
     .digest('base64');
@@ -67,7 +91,6 @@ const getRelevantCognitoAttributes = ({
     dept,
     roles,
     sub,
-    phoneNumber: customphoneNumber,
   };
 };
 
@@ -96,7 +119,7 @@ const addDataFromApply = (
 ) => {
   const { gap_user_id } =
     usersFromApply.find(({ user_sub }) => user_sub === cognitoUser.sub) || {};
-  
+
   if (!gap_user_id)
     console.log('cannot find gap_user_id for user with sub: ', cognitoUser.sub);
 
@@ -108,19 +131,25 @@ export const addDataToUserService = async ({
   dept,
   hashedEmailAddress,
   gap_user_id,
-  phoneNumber,
   roles,
-}: UserServiceData) =>
-  pgUserServiceClient.query(
-    `INSERT INTO gap_users (email, sub, dept, gap_user_id, phonenumber, roles) VALUES ($1, $2, $3, $4, $5, $6)`,
-    [
-      hashedEmailAddress,
-      sub,
-      dept,
-      gap_user_id,
-      phoneNumber,
-      roles ? roles.join('#') : '',
-    ]
+}: UserServiceData) => {
+  const { id: deptId } = ((
+    await pgUserServiceClient.query(
+      `SELECT * FROM departments WHERE name = $1`,
+      [dept]
+    )
+  ).rows[0] || {}) as Department;
+
+  const userExists = await pgUserServiceClient.query(
+    'SELECT * from gap_users where sub = $1',
+    [sub]
   );
+  if (userExists.rows.length > 0) return;
+
+  return pgUserServiceClient.query(
+    `INSERT INTO gap_users (email, sub, dept_id, gap_user_id, roles) VALUES ($1, $2, $3, $4, $5)`,
+    [hashedEmailAddress, sub, deptId, gap_user_id, roles ? roles.join('#') : '']
+  );
+};
 
 main();
