@@ -3,6 +3,7 @@ export interface RelevantCognitoData {
   dept: string;
   roles: string[];
   sub: string;
+  encryptedEmailAddress: string;
 };
 
 export interface UserServiceData extends RelevantCognitoData {

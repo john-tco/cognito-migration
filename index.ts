@@ -11,6 +11,7 @@ import {
   pgUserServiceClient,
 } from './clients';
 import { createHash, randomUUID } from 'crypto';
+import { encrypt } from './encryption';
 
 const main = async () => {
   await pgApplicantApplyClient.connect();
@@ -24,10 +25,9 @@ const main = async () => {
   })) as {
     Users: UserType[];
   };
-
-  const cognitoUsers = Users.map(getRelevantCognitoAttributes).filter(
-    Boolean
-  ) as RelevantCognitoData[];
+  const cognitoUsers = (
+    await Promise.all(Users.map(getRelevantCognitoAttributes))
+  ).filter(Boolean) as RelevantCognitoData[];
   await populateDepartmentsTable(cognitoUsers);
   (
     cognitoUsers.map((users) =>
@@ -61,7 +61,7 @@ const populateDepartmentsTable = async (
   });
 };
 
-const getRelevantCognitoAttributes = ({
+const getRelevantCognitoAttributes = async ({
   Attributes,
   Username: emailAddress,
 }: UserType) => {
@@ -84,11 +84,14 @@ const getRelevantCognitoAttributes = ({
   const hashedEmailAddress = createHash('sha512')
     .update(emailAddress)
     .digest('base64');
+  const encryptedEmailAddress = await encrypt(emailAddress);
+
   return {
     hashedEmailAddress,
     dept,
     roles,
     sub,
+    encryptedEmailAddress,
   };
 };
 
@@ -128,6 +131,7 @@ export const addDataToUserService = async ({
   sub,
   dept,
   hashedEmailAddress,
+  encryptedEmailAddress,
   gap_user_id,
   roles,
 }: UserServiceData) => {
@@ -137,15 +141,22 @@ export const addDataToUserService = async ({
   );
   if (userExists.rows.length > 0) return;
 
-    const { id: deptId } = ((
+  const { id: deptId } = ((
     await pgUserServiceClient.query(
       `SELECT * FROM departments WHERE name = $1`,
       [dept]
     )
   ).rows[0] || {}) as Department;
-  return pgUserServiceClient.query(
-    `INSERT INTO gap_users (email, sub, dept_id, gap_user_id, roles) VALUES ($1, $2, $3, $4, $5)`,
-    [hashedEmailAddress, sub, deptId, gap_user_id, roles ? roles.join('#') : '']
+  await pgUserServiceClient.query(
+    `INSERT INTO gap_users (hashedEmail, encryptedEmail, sub, dept_id, gap_user_id, roles) VALUES ($1, $2, $3, $4, $5, $6)`,
+    [
+      hashedEmailAddress,
+      encryptedEmailAddress,
+      sub,
+      deptId,
+      gap_user_id,
+      roles ? roles.join('#') : '',
+    ]
   );
 };
 
