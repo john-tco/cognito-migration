@@ -28,9 +28,7 @@ const main = async () => {
   const cognitoUsers = Users.map(getRelevantCognitoAttributes).filter(
     Boolean
   ) as RelevantCognitoData[];
-
   await populateDepartmentsTable(cognitoUsers);
-
   (
     cognitoUsers.map((users) =>
       addDataFromApply(pgUsersFromApply, users)
@@ -133,19 +131,18 @@ export const addDataToUserService = async ({
   gap_user_id,
   roles,
 }: UserServiceData) => {
-  const { id: deptId } = ((
-    await pgUserServiceClient.query(
-      `SELECT * FROM departments WHERE name = $1`,
-      [dept]
-    )
-  ).rows[0] || {}) as Department;
-
   const userExists = await pgUserServiceClient.query(
     'SELECT * from gap_users where sub = $1',
     [sub]
   );
   if (userExists.rows.length > 0) return;
 
+    const { id: deptId } = ((
+    await pgUserServiceClient.query(
+      `SELECT * FROM departments WHERE name = $1`,
+      [dept]
+    )
+  ).rows[0] || {}) as Department;
   return pgUserServiceClient.query(
     `INSERT INTO gap_users (email, sub, dept_id, gap_user_id, roles) VALUES ($1, $2, $3, $4, $5)`,
     [hashedEmailAddress, sub, deptId, gap_user_id, roles ? roles.join('#') : '']
