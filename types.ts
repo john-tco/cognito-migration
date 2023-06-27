@@ -15,3 +15,8 @@ export interface Department  {
   name: string;
   ggis_id: string
 }
+
+export interface Role {
+  id: string;
+  name: string;
+}
