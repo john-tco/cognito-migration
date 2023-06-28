@@ -18,6 +18,8 @@ import {
 import { createHash, randomUUID } from 'crypto';
 import { encrypt } from './encryption';
 
+const DRY_RUN = true;
+
 const main = async () => {
   await pgApplicantApplyClient.connect();
   await pgUserServiceClient.connect();
@@ -62,10 +64,15 @@ const populateDeptAndRoleTable = async (
   roles.filter(Boolean).forEach(async (role) => {
     const roleExists = existingRoles.some(({ name }) => name === role);
     if (!roleExists) {
+      if (DRY_RUN) { 
+        console.log("INSERT INTO roles (id, name) VALUES ($1, $2)");
+        console.log([randomUUID(), role]);
+      } else {
       await pgUserServiceClient.query(
         `INSERT INTO roles (id, name) VALUES ($1, $2)`,
         [randomUUID(), role]
       );
+      }
     }
   });
   depts.filter(Boolean).forEach(async (dept) => {
@@ -73,10 +80,17 @@ const populateDeptAndRoleTable = async (
       ({ name }) => name === dept
     );
     if (!departmentExists) {
-      await pgUserServiceClient.query(
-        `INSERT INTO departments (id, name, ggis_id) VALUES ($1, $2, $3)`,
-        [randomUUID(), dept, '']
-      );
+      if (DRY_RUN) {
+        console.log(
+          `INSERT INTO departments (id, name, ggis_id) VALUES ($1, $2, $3)`,
+          console.log([randomUUID(), dept, ''])
+        );
+      } else {
+        await pgUserServiceClient.query(
+          `INSERT INTO departments (id, name, ggis_id) VALUES ($1, $2, $3)`,
+          [randomUUID(), dept, '']
+        );
+      }
     }
   });
 };
@@ -100,6 +114,7 @@ const getRelevantCognitoAttributes = async ({
     dept: '',
     roles: [],
   });
+
   const { sub } = pickAttributes(Attributes, ['sub']);
   const hashedEmailAddress = createHash('sha512')
     .update(emailAddress)
@@ -159,6 +174,31 @@ export const addDataToUserService = async ({
   );
   if (userExists.rows.length > 0) return;
 
+  const { id: deptId } = ((
+    await pgUserServiceClient.query(
+      `SELECT * FROM departments WHERE name = $1`,
+      [dept]
+    )
+  ).rows[0] || {}) as Department;
+
+  if (DRY_RUN) {
+    console.log(
+      `INSERT INTO gap_users (hashedEmail, encryptedEmail, sub, dept_id, gap_user_id) VALUES ($1, $2, $3, $4, $5)`,
+      console.log([
+        hashedEmailAddress,
+        encryptedEmailAddress,
+        sub,
+        deptId,
+        gap_user_id,
+      ])
+    );
+  } else {
+    await pgUserServiceClient.query(
+      `INSERT INTO gap_users (hashedEmail, encryptedEmail, sub, dept_id, gap_user_id) VALUES ($1, $2, $3, $4, $5)`,
+      [hashedEmailAddress, encryptedEmailAddress, sub, deptId, gap_user_id]
+    );
+  }
+
   roles.forEach(async (role) => {
     const { id: roleId } = ((
       await pgUserServiceClient.query(`SELECT * FROM roles WHERE name = $1`, [
@@ -166,27 +206,18 @@ export const addDataToUserService = async ({
       ])
     ).rows[0] || {}) as Role;
 
-    await pgUserServiceClient.query(
-      `INSERT INTO user_roles (id, user_sub, role_id) VALUES ($1, $2, $3)`,
-      [randomUUID(), sub, roleId]
-    );
+    if (DRY_RUN) {
+      console.log(
+        'will insert INTO user_roles (id, user_sub, role_id) VALUES ($1, $2, $3)'
+      );
+      console.log([randomUUID(), sub, roleId]);
+    } else {
+      await pgUserServiceClient.query(
+        `INSERT INTO user_roles (id, user_sub, role_id) VALUES ($1, $2, $3)`,
+        [randomUUID(), sub, roleId]
+      );
+    }
   });
-
-  const { id: deptId } = ((
-    await pgUserServiceClient.query(`SELECT * FROM departments WHERE name = $1`, [
-      dept,
-    ])
-  ).rows[0] || {}) as Department;
-  await pgUserServiceClient.query(
-    `INSERT INTO gap_users (hashedEmail, encryptedEmail, sub, dept_id, gap_user_id) VALUES ($1, $2, $3, $4, $5)`,
-    [
-      hashedEmailAddress,
-      encryptedEmailAddress,
-      sub,
-      deptId,
-      gap_user_id,
-    ]
-  );
 };
 
 main();
