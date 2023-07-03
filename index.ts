@@ -40,13 +40,12 @@ const main = async () => {
       addDataFromApply(pgUsersFromApply, users)
     ) as UserServiceData[]
   ).map(addDataToUserService);
-  console.log('done');
 };
 
 const ROLE_MAP = {
   ordinary_user: ['apply', 'find'],
   'ordinary_user\t': ['apply', 'find'],
-  administrator: ['apply', 'find', 'administrator'],
+  administrator: ['apply', 'find', 'admin'],
 };
 
 const populateDeptAndRoleTable = async (
