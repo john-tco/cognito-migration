@@ -1,8 +1,5 @@
 import { AttributeType } from './node_modules/@aws-sdk/client-cognito-identity-provider/dist-types/models/models_0.d';
-import {
-  CognitoIdentityProvider,
-  UserType,
-} from '@aws-sdk/client-cognito-identity-provider';
+import { UserType } from '@aws-sdk/client-cognito-identity-provider';
 import {
   Department,
   RelevantCognitoData,
@@ -27,11 +24,13 @@ const main = async () => {
   const { rows: pgUsersFromApply } = await pgApplicantApplyClient.query(
     'SELECT * FROM gap_user'
   );
+
   const { Users } = (await cognitoClient.listUsers({
     UserPoolId: COGNITO_POOL_ID,
   })) as {
     Users: UserType[];
   };
+
   const cognitoUsers = (
     await Promise.all(Users.map(getRelevantCognitoAttributes))
   ).filter(Boolean) as RelevantCognitoData[];
@@ -41,7 +40,13 @@ const main = async () => {
       addDataFromApply(pgUsersFromApply, users)
     ) as UserServiceData[]
   ).map(addDataToUserService);
-  return 1;
+  console.log('done');
+};
+
+const ROLE_MAP = {
+  ordinary_user: ['apply', 'find'],
+  'ordinary_user\t': ['apply', 'find'],
+  administrator: ['apply', 'find', 'administrator'],
 };
 
 const populateDeptAndRoleTable = async (
@@ -50,28 +55,35 @@ const populateDeptAndRoleTable = async (
   const { depts, roles } = cognitoUsers.reduce(
     (acc, { dept, roles }) => {
       if (!acc.depts.includes(dept)) acc.depts.push(dept);
-      roles.forEach(
-        (role) => !acc.roles.includes(role) && acc.roles.push(role)
-      );
+      roles.forEach((role) => {
+        const mappedRoles = ROLE_MAP[
+          role as keyof typeof ROLE_MAP
+        ] || [role];
+        mappedRoles.forEach(
+          (role) => !acc.roles.includes(role) && acc.roles.push(role)
+        );
+      });
       return acc;
     },
     { roles: [], depts: [] } as { roles: string[]; depts: string[] }
   );
   const { rows: existingDepartments }: { rows: Department[] } =
     await pgUserServiceClient.query(`SELECT * from departments`);
+
   const { rows: existingRoles }: { rows: Role[] } =
     await pgUserServiceClient.query(`SELECT * from roles`);
+
   roles.filter(Boolean).forEach(async (role) => {
     const roleExists = existingRoles.some(({ name }) => name === role);
     if (!roleExists) {
-      if (DRY_RUN) { 
-        console.log("INSERT INTO roles (id, name) VALUES ($1, $2)");
+      if (DRY_RUN) {
+        console.log('INSERT INTO roles (id, name) VALUES ($1, $2)');
         console.log([randomUUID(), role]);
       } else {
-      await pgUserServiceClient.query(
-        `INSERT INTO roles (id, name) VALUES ($1, $2)`,
-        [randomUUID(), role]
-      );
+        await pgUserServiceClient.query(
+          `INSERT INTO roles (id, name) VALUES ($1, $2)`,
+          [randomUUID(), role]
+        );
       }
     }
   });
@@ -157,7 +169,13 @@ const addDataFromApply = (
   if (!gap_user_id)
     console.log('cannot find gap_user_id for user with sub: ', cognitoUser.sub);
 
-  return { ...cognitoUser, gap_user_id };
+  return {
+    ...cognitoUser,
+    gap_user_id,
+    roles: cognitoUser.roles
+      .map((role) => ROLE_MAP[role as keyof typeof ROLE_MAP] || [role])
+      .flat(),
+  };
 };
 
 export const addDataToUserService = async ({
