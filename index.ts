@@ -72,7 +72,7 @@ const populateDeptAndRoleTable = async (
   const { rows: existingRoles }: { rows: Role[] } =
     await pgUserServiceClient.query(`SELECT * from roles`);
 
-  roles.filter(Boolean).forEach(async (role) => {
+  await Promise.all(roles.filter(Boolean).map(async (role) => {
     const roleExists = existingRoles.some(({ name }) => name === role);
     if (!roleExists) {
       if (DRY_RUN) {
@@ -85,8 +85,8 @@ const populateDeptAndRoleTable = async (
         );
       }
     }
-  });
-  depts.filter(Boolean).forEach(async (dept) => {
+  }));
+  await Promise.all(depts.filter(Boolean).map(async (dept) => {
     const departmentExists = existingDepartments.some(
       ({ name }) => name === dept
     );
@@ -103,7 +103,7 @@ const populateDeptAndRoleTable = async (
         );
       }
     }
-  });
+  }));
 };
 
 const getRelevantCognitoAttributes = async ({
