@@ -15,7 +15,7 @@ import {
 import { createHash, randomUUID } from 'crypto';
 import { encrypt } from './encryption';
 
-const DRY_RUN = false;
+const DRY_RUN = true;
 
 const main = async () => {
   await pgApplicantApplyClient.connect();
