@@ -45,7 +45,7 @@ const main = async () => {
 const ROLE_MAP = {
   ordinary_user: ['APPLICANT', 'FIND'],
   'ordinary_user\t': ['APPLICANT', 'FIND'],
-  administrator: ['APPLICANT', 'FIND', 'ADMIN'],
+  administrator: ['ADMIN'],
 };
 
 const populateDeptAndRoleTable = async (
