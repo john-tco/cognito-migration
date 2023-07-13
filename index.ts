@@ -15,7 +15,7 @@ import {
 import { createHash, randomUUID } from 'crypto';
 import { encrypt } from './encryption';
 
-const DRY_RUN = true;
+const DRY_RUN = false;
 
 const main = async () => {
   await pgApplicantApplyClient.connect();
@@ -72,7 +72,7 @@ const populateDeptAndRoleTable = async (
   const { rows: existingRoles }: { rows: Role[] } =
     await pgUserServiceClient.query(`SELECT * from roles`);
 
-  await Promise.all(roles.filter(Boolean).map(async (role) => {
+  roles.filter(Boolean).forEach(async (role) => {
     const roleExists = existingRoles.some(({ name }) => name === role);
     if (!roleExists) {
       if (DRY_RUN) {
@@ -85,8 +85,8 @@ const populateDeptAndRoleTable = async (
         );
       }
     }
-  }));
-  await Promise.all(depts.filter(Boolean).map(async (dept) => {
+  });
+  depts.filter(Boolean).forEach(async (dept) => {
     const departmentExists = existingDepartments.some(
       ({ name }) => name === dept
     );
@@ -103,7 +103,7 @@ const populateDeptAndRoleTable = async (
         );
       }
     }
-  }));
+  });
 };
 
 const getRelevantCognitoAttributes = async ({
