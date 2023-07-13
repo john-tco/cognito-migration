@@ -1,9 +1,8 @@
 export interface RelevantCognitoData {
-  hashedEmailAddress: string;
+  email: string;
   dept: string;
   roles: string[];
   sub: string;
-  encryptedEmailAddress: string;
 };
 
 export interface UserServiceData extends RelevantCognitoData {
