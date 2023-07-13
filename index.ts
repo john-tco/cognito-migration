@@ -15,7 +15,7 @@ import {
 import { createHash, randomUUID } from 'crypto';
 import { encrypt } from './encryption';
 
-const DRY_RUN = true;
+const DRY_RUN = false;
 
 const main = async () => {
   await pgApplicantApplyClient.connect();
@@ -43,9 +43,9 @@ const main = async () => {
 };
 
 const ROLE_MAP = {
-  ordinary_user: ['apply', 'find'],
-  'ordinary_user\t': ['apply', 'find'],
-  administrator: ['apply', 'find', 'admin'],
+  ordinary_user: ['APPLICANT', 'FIND'],
+  'ordinary_user\t': ['APPLICANT', 'FIND'],
+  administrator: ['APPLICANT', 'FIND', 'ADMIN'],
 };
 
 const populateDeptAndRoleTable = async (
@@ -108,9 +108,9 @@ const populateDeptAndRoleTable = async (
 
 const getRelevantCognitoAttributes = async ({
   Attributes,
-  Username: emailAddress,
+  Username: email,
 }: UserType) => {
-  const invalidUser = !emailAddress || !Attributes;
+  const invalidUser = !email || !Attributes;
   if (invalidUser) return null;
 
   const featuresIndex = Attributes.findIndex(
@@ -127,15 +127,11 @@ const getRelevantCognitoAttributes = async ({
   });
 
   const { sub } = pickAttributes(Attributes, ['sub']);
-  const hashedEmailAddress = createHash('sha512')
-    .update(emailAddress)
-    .digest('base64');
   return {
-    hashedEmailAddress,
+    email,
     dept,
     roles,
     sub,
-    encryptedEmailAddress: await encrypt(emailAddress),
   };
 };
 
@@ -177,14 +173,19 @@ const addDataFromApply = (
   };
 };
 
+
+// @TODO: this will only work with a fresh database, for envs other than local we 
+// will need a better strategy
+let userId = 0;
+
 export const addDataToUserService = async ({
   sub,
   dept,
-  hashedEmailAddress,
-  encryptedEmailAddress,
-  gap_user_id,
+  email,
   roles,
 }: UserServiceData) => {
+  const gap_user_id = userId++;
+
   const userExists = await pgUserServiceClient.query(
     'SELECT * from gap_users where sub = $1',
     [sub]
@@ -200,23 +201,22 @@ export const addDataToUserService = async ({
 
   if (DRY_RUN) {
     console.log(
-      `INSERT INTO gap_users (hashedEmail, encryptedEmail, sub, dept_id, gap_user_id) VALUES ($1, $2, $3, $4, $5)`,
+      `INSERT INTO gap_users (gap_user_id, email, sub, dept_id) VALUES ($1, $2, $3, $4)`,
       console.log([
-        hashedEmailAddress,
-        encryptedEmailAddress,
-        sub,
-        deptId,
         gap_user_id,
+        email,
+        sub,
+        deptId
       ])
     );
   } else {
     await pgUserServiceClient.query(
-      `INSERT INTO gap_users (hashedEmail, encryptedEmail, sub, dept_id, gap_user_id) VALUES ($1, $2, $3, $4, $5)`,
-      [hashedEmailAddress, encryptedEmailAddress, sub, deptId, gap_user_id]
+      `INSERT INTO gap_users (gap_user_id, email, sub, dept_id) VALUES ($1, $2, $3, $4)`,
+      [gap_user_id, email, sub, deptId]
     );
   }
 
-  roles.forEach(async (role) => {
+  await Promise.all(roles.map(async (role) => {
     const { id: roleId } = ((
       await pgUserServiceClient.query(`SELECT * FROM roles WHERE name = $1`, [
         role,
@@ -225,16 +225,16 @@ export const addDataToUserService = async ({
 
     if (DRY_RUN) {
       console.log(
-        'will insert INTO user_roles (id, user_sub, role_id) VALUES ($1, $2, $3)'
+        'will insert INTO roles_users (roles_id, users_gap_user_id) VALUES ($1, $2)'
       );
-      console.log([randomUUID(), sub, roleId]);
+      console.log([roleId, gap_user_id]);
     } else {
       await pgUserServiceClient.query(
-        `INSERT INTO user_roles (id, user_sub, role_id) VALUES ($1, $2, $3)`,
-        [randomUUID(), sub, roleId]
+        `INSERT INTO roles_users (roles_id, users_gap_user_id) VALUES ($1, $2)`,
+        [roleId, gap_user_id]
       );
     }
-  });
+  }));
 };
 
 main();
