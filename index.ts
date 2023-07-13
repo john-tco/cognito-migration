@@ -76,12 +76,12 @@ const populateDeptAndRoleTable = async (
     const roleExists = existingRoles.some(({ name }) => name === role);
     if (!roleExists) {
       if (DRY_RUN) {
-        console.log('INSERT INTO roles (id, name) VALUES ($1, $2)');
-        console.log([randomUUID(), role]);
+        console.log('INSERT INTO roles (name) VALUES ($1)');
+        console.log([role]);
       } else {
         await pgUserServiceClient.query(
-          `INSERT INTO roles (id, name) VALUES ($1, $2)`,
-          [randomUUID(), role]
+          `INSERT INTO roles (name) VALUES ($1)`,
+          [role]
         );
       }
     }
@@ -93,13 +93,13 @@ const populateDeptAndRoleTable = async (
     if (!departmentExists) {
       if (DRY_RUN) {
         console.log(
-          `INSERT INTO departments (id, name, ggis_id) VALUES ($1, $2, $3)`,
-          console.log([randomUUID(), dept, ''])
+          `INSERT INTO departments (name, ggis_id) VALUES ($1, $2)`,
+          console.log([dept, ''])
         );
       } else {
         await pgUserServiceClient.query(
-          `INSERT INTO departments (id, name, ggis_id) VALUES ($1, $2, $3)`,
-          [randomUUID(), dept, '']
+          `INSERT INTO departments (name, ggis_id) VALUES ($1, $2)`,
+          [dept, '']
         );
       }
     }
