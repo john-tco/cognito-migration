@@ -149,12 +149,21 @@ const addDataFromApply = (cognitoUser: RelevantCognitoData) => {
   };
 };
 
+const emailsToKeep = [
+  'example@email.com'
+];
+
 export const addDataToUserService = async ({
   sub,
   dept,
   email,
   roles,
 }: UserServiceData) => {
+  if (emailsToKeep.includes(email)) { 
+    console.log(`skipping user: ${email}`);
+    return;
+  }
+
   const userExists = await pgUserServiceClient.query(
     "SELECT * from gap_users where sub = $1",
     [sub]
